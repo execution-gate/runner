@@ -136,7 +136,8 @@ Fail-closed means fail-closed.
 
 ---
 
-## Testing the system
+## Testing the system  
+Revocation and restore are performed from the MachineID dashboard.
 
 1. Start the service
 2. Verify execution proceeds
