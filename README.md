@@ -100,7 +100,8 @@ The authority provider can be swapped, but the enforcement model must remain fai
 
 ---
 
-## Environment configuration
+## Environment configuration  
+Get an org key (free tier available) at https://machineid.io
 
 ```bash
 export MACHINEID_ORG_KEY="org_xxx"
