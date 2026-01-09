@@ -43,6 +43,19 @@ If authorization cannot be confirmed, execution halts.
 
 ---
 
+## Process termination behavior
+
+Enforcement uses **OS-level process termination**.
+
+Denials cannot be intercepted by application code, exception handlers,
+`finally` blocks, or agent frameworks. This is intentional and required
+to guarantee fail-closed behavior in long-running, self-healing, or
+supervised runtimes.
+
+If execution is denied, the process exits immediately.
+
+---
+
 ## The 5 execution boundaries
 
 These boundaries are where authorization checks **must** occur.
@@ -64,11 +77,9 @@ You may enforce more often, but never less.
 ```
 runner/
 ├─ execution_gate/
-│  ├─ guard.py          # authorization + fail-closed enforcement
-│  └─ runner.py         # example execution loop
+│  └─ guard.py          # authorization + fail-closed enforcement
 ├─ examples/
-│  ├─ worker.py         # queue / job worker example
-│  └─ agent_loop.py     # agent-style loop example
+│  └─ worker.py         # queue / job worker example
 └─ README.md
 ```
 
@@ -78,7 +89,7 @@ runner/
 
 At every boundary:
 
-```bash
+```
 authorize()
 if not authorized:
     stop execution immediately
@@ -96,17 +107,20 @@ This repository uses **MachineID** as the default execution authority provider.
 - Org-level kill switch
 - Fail-closed semantics
 
-The authority provider can be swapped, but the enforcement model must remain fail-closed.
+The authority provider can be swapped, but the enforcement model **must**
+remain fail-closed.
 
 ---
 
-## Environment configuration  
+## Environment configuration
+
 Get an org key (free tier available) at https://machineid.io
 
 ```bash
 export MACHINEID_ORG_KEY="org_xxx"
 export SERVICE_NAME="worker"
 export ENVIRONMENT="prod"
+export SERVICE_ROLE="processor"
 export INSTANCE_ID="i-abc123"
 ```
 
@@ -136,13 +150,14 @@ Fail-closed means fail-closed.
 
 ---
 
-## Testing the system  
-Revocation and restore are performed from the MachineID dashboard.
+## Testing the system
+
+Revocation and restore are performed from the authority system.
 
 1. Start the service
 2. Verify execution proceeds
-3. Revoke authorization in the authority system
-4. Wait for next boundary
+3. Revoke authorization
+4. Wait for the next boundary
 5. Execution must stop immediately
 6. Restore authorization
 7. Execution resumes on restart or next loop
@@ -163,7 +178,8 @@ It is **hard enforcement**.
 
 ## Why this exists
 
-As autonomous systems, agents, and background workers proliferate, **unauthorized execution becomes a systemic risk**.
+As autonomous systems, agents, and background workers proliferate,
+**unauthorized execution becomes a systemic risk**.
 
 Fail-open execution leads to:
 - runaway costs

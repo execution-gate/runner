@@ -9,10 +9,19 @@ Boundaries:
 3) Before cost    -> enforce_boundary()
 4) Before sidefx  -> enforce_boundary()
 5) Before fan-out -> enforce_boundary()
+
+Note:
+- The guard is fail-closed. On denial or validation failure it hard-terminates the process.
 """
 
+import sys
 import time
 from execution_gate.guard import enforce_startup, enforce_boundary
+
+
+def _log(msg: str) -> None:
+    sys.stderr.write(msg + "\n")
+    sys.stderr.flush()
 
 
 def pull_job():
@@ -33,14 +42,14 @@ def perform_side_effect(task_name: str):
 def main():
     # 1) STARTUP BOUNDARY
     device_id = enforce_startup()
-    print(f"authorized startup as device_id={device_id}")
+    _log(f"authorized startup as device_id={device_id}")
 
     while True:
         # 2) BEFORE JOB / WORK UNIT
         enforce_boundary(device_id)
 
         job = pull_job()
-        print(f"pulled {job['job_id']}")
+        _log(f"pulled {job['job_id']}")
 
         # 5) BEFORE FAN-OUT (before batch loops / parallel dispatch)
         enforce_boundary(device_id)
@@ -54,9 +63,8 @@ def main():
             enforce_boundary(device_id)
             perform_side_effect(task)
 
-            print(f"completed {task}")
+            _log(f"completed {task}")
 
-        # Sleep between jobs
         time.sleep(2.0)
 
 

@@ -1,8 +1,9 @@
+
 """
 Fail-Closed Authorization Guard
 
 This module enforces hard, fail-closed execution using an external
-authority provider. Any failure to receive an explicit ALLOW
+authority provider. Any failure to receive an explicit allowed:true
 results in immediate denial.
 
 Default authority provider: MachineID
@@ -35,6 +36,17 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
     return os.environ.get(name, default)
 
 
+def _log(msg: str) -> None:
+    # Minimal ops visibility (neutral, no marketing)
+    sys.stderr.write(msg + "\n")
+    sys.stderr.flush()
+
+
+def _hard_exit() -> None:
+    # OS-level termination (cannot be caught by try/except)
+    os._exit(1)
+
+
 def build_device_id() -> str:
     """
     Recommended device ID format:
@@ -51,7 +63,8 @@ def build_device_id() -> str:
 def _org_key() -> str:
     key = _env("MACHINEID_ORG_KEY")
     if not key:
-        raise RuntimeError("MACHINEID_ORG_KEY is required")
+        _log("authorization guard: missing MACHINEID_ORG_KEY")
+        _hard_exit()
     return key
 
 
@@ -63,6 +76,9 @@ def register_device(device_id: str) -> None:
     """
     Idempotent registration.
     Safe to call on every startup.
+
+    Registration failure does NOT allow execution.
+    We fail closed later on validate, but we log for visibility.
     """
     try:
         requests.post(
@@ -75,15 +91,13 @@ def register_device(device_id: str) -> None:
             timeout=HTTP_TIMEOUT,
         )
     except Exception:
-        # Registration failure does NOT allow execution.
-        # We fail closed later on validate.
-        pass
+        _log("authorization guard: registration failed (non-fatal; validate will gate)")
 
 
 def validate_or_exit(device_id: str) -> None:
     """
     Hard authorization check.
-    Any failure = immediate process exit.
+    Any failure = immediate termination (fail closed).
     """
     try:
         resp = requests.post(
@@ -96,17 +110,33 @@ def validate_or_exit(device_id: str) -> None:
             timeout=HTTP_TIMEOUT,
         )
 
+        # Fail closed on non-200
         if resp.status_code != 200:
-            sys.exit(1)
+            _log(f"authorization guard: validate failed (http {resp.status_code})")
+            _hard_exit()
 
-        data = resp.json()
-        if not data.get("allowed", False):
-            sys.exit(1)
+        # Fail closed on malformed / non-JSON
+        try:
+            data = resp.json()
+        except Exception:
+            _log("authorization guard: validate failed (non-json response)")
+            _hard_exit()
 
-    except Exception:
-        # Network errors, timeouts, malformed responses
-        # are treated as deny.
-        sys.exit(1)
+        allowed = data.get("allowed", None)
+        if allowed is not True:
+            # Canonical audit fields (if present)
+            code = data.get("code", "UNKNOWN")
+            request_id = data.get("request_id", "UNKNOWN")
+            _log(f"authorization guard: denied (code={code}, request_id={request_id})")
+            _hard_exit()
+
+        # Allowed -> continue
+        return
+
+    except Exception as e:
+        # Network errors, timeouts, malformed responses are treated as deny.
+        _log(f"authorization guard: validate unreachable ({type(e).__name__})")
+        _hard_exit()
 
 
 def enforce_startup() -> str:
